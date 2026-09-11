@@ -641,6 +641,13 @@ impl ClientShellState {
             }
             return;
         }
+        if matches!(self.overlay, Some(ClientShellOverlay::About)) {
+            if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                self.overlay = None;
+                outcome.repaint = true;
+            }
+            return;
+        }
         if matches!(
             self.overlay,
             Some(ClientShellOverlay::ProductAnnouncement(_))

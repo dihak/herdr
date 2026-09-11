@@ -58,6 +58,11 @@ impl ClientShellState {
         }
     }
 
+    pub(super) fn open_about(&mut self) {
+        self.overlay = Some(ClientShellOverlay::About);
+        self.chrome_drag = None;
+    }
+
     pub(super) fn open_release_notes(&mut self) {
         let Some(notes) = self
             .snapshot
@@ -771,6 +776,14 @@ impl ClientShellState {
                 KeyCode::Enter | KeyCode::Right | KeyCode::Char('l')
             ) {
                 self.complete_onboarding(outcome);
+            }
+            return;
+        }
+
+        if matches!(self.overlay, Some(ClientShellOverlay::About)) {
+            if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
+                self.overlay = None;
+                outcome.repaint = true;
             }
             return;
         }

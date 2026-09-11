@@ -46,7 +46,7 @@ jobs:
             else
               gh pr create --base master --head "$BRANCH" \
                 --title "chore: sync upstream master" \
-                --body "Daily merge of herdrdev/herdr master into this fork.
+                --body "Weekly merge of herdrdev/herdr master into this fork.
 
           Review fork-owned files if they changed: Cargo.toml, src/update.rs, src/remote/attach.rs, distribution/install.*, README.md, agent-grid sources.
 

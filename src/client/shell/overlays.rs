@@ -64,6 +64,7 @@ pub(crate) fn render_client_overlay(
         }
         ClientShellOverlay::Rename(v) => render_rename_overlay(b, v, p),
         ClientShellOverlay::ConfirmClose(v) => render_confirm_close_overlay(b, v, p),
+        ClientShellOverlay::About => render_about_overlay(b, p),
         ClientShellOverlay::Help(v) => render_help_overlay(b, v, k, p),
         ClientShellOverlay::Navigator(v) => {
             render_navigator_overlay(b, v, endpoints, active_endpoint_id, p)
@@ -521,6 +522,66 @@ fn render_product_announcement_overlay(
         product_announcement_scrollbar: track.unwrap_or_default(),
         product_announcement_scroll_metrics: Some(metrics),
         product_announcement_max_scroll: max_scroll,
+        ..OverlayRender::default()
+    })
+}
+
+fn render_about_overlay(b: &mut Buffer, p: &Palette) -> Option<OverlayRender> {
+    let outer = popup(b.area, 56, 10)?;
+    let inner = panel(b, outer, p.accent, p.panel_bg)?;
+    if inner.height < 6 {
+        return Some(OverlayRender::default());
+    }
+    let base = Style::default()
+        .bg(p.panel_bg)
+        .remove_modifier(Modifier::DIM);
+    let title = format!(
+        "herdr {} · {} fork",
+        crate::build_info::version(),
+        crate::build_info::FORK_OWNER
+    );
+    put_text(
+        b,
+        inner.x,
+        inner.y,
+        inner.width,
+        &title,
+        base.fg(p.text).add_modifier(Modifier::BOLD),
+    );
+    put_text(
+        b,
+        inner.x,
+        inner.y.saturating_add(2),
+        inner.width,
+        crate::build_info::FORK_REPO,
+        base.fg(p.overlay1),
+    );
+    put_text(
+        b,
+        inner.x,
+        inner.y.saturating_add(3),
+        inner.width,
+        "updates come from this repo, not herdr.dev",
+        base.fg(p.overlay0),
+    );
+    let close = Rect::new(
+        inner.x,
+        inner.bottom().saturating_sub(1),
+        12.min(inner.width),
+        1,
+    );
+    button(
+        b,
+        close,
+        " esc close ",
+        Style::default()
+            .fg(contrast(p))
+            .bg(p.accent)
+            .add_modifier(Modifier::BOLD),
+    );
+    Some(OverlayRender {
+        primary: close,
+        cancel: close,
         ..OverlayRender::default()
     })
 }

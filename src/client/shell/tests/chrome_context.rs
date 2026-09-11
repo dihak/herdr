@@ -309,6 +309,7 @@ fn global_menu_opens_from_sidebar_and_routes_client_actions() {
     assert!(text.contains("settings"));
     assert!(text.contains("keybinds"));
     assert!(text.contains("reload config"));
+    assert!(text.contains("about"));
     assert!(text.contains("detach"));
 
     let keybinds = state.hits.global_menu_rows[1].0;
@@ -322,7 +323,7 @@ fn global_menu_opens_from_sidebar_and_routes_client_actions() {
     assert!(matches!(state.overlay, Some(ClientShellOverlay::Help(_))));
 
     state.overlay = Some(ClientShellOverlay::GlobalMenu(ClientGlobalMenuOverlay {
-        highlighted: 3,
+        highlighted: 4,
     }));
     let detach = state.handle_input_bytes(b"\r");
     assert!(detach.detach);
@@ -424,4 +425,33 @@ fn close_confirmation_error_becomes_client_owned_overlay_and_stable_group_close(
         crate::api::schema::Method::WorkspaceClose(params)
             if params.workspace_id == "ws_1" && params.close_group
     ));
+}
+
+#[test]
+fn about_menu_shows_dihak_fork_version() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    state.compose(106, 30).expect("shell frame");
+    state.overlay = Some(ClientShellOverlay::GlobalMenu(ClientGlobalMenuOverlay {
+        highlighted: 3,
+    }));
+    let open = state.handle_input_bytes(b"\r");
+    assert!(open.actions.is_empty());
+    assert!(matches!(state.overlay, Some(ClientShellOverlay::About)));
+
+    let frame = state.compose(106, 30).expect("about overlay");
+    let text = frame
+        .cells
+        .iter()
+        .map(|cell| cell.symbol.as_str())
+        .collect::<String>();
+    assert!(text.contains("dihak fork"));
+    assert!(text.contains("github.com/dihak/herdr"));
+    assert!(!text.contains("agent grid"));
+    assert!(!text.contains("prefix+a"));
+
+    let closed = state.handle_input_bytes(b"\x1b");
+    assert!(closed.repaint);
+    assert!(state.overlay.is_none());
 }

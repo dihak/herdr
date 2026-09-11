@@ -92,7 +92,11 @@ fn print_full_status(json: bool) -> std::io::Result<i32> {
     }
 
     println!("client:");
-    println!("  version: {}", crate::build_info::version());
+    println!(
+        "  version: {} ({} fork)",
+        crate::build_info::version(),
+        crate::build_info::FORK_OWNER
+    );
     println!(
         "  channel: {}",
         crate::config::Config::load().config.update.channel.as_str()
@@ -132,7 +136,11 @@ fn print_client_status(json: bool) -> std::io::Result<()> {
         return Ok(());
     }
 
-    println!("version: {}", crate::build_info::version());
+    println!(
+        "version: {} ({} fork)",
+        crate::build_info::version(),
+        crate::build_info::FORK_OWNER
+    );
     println!(
         "channel: {}",
         crate::config::Config::load().config.update.channel.as_str()
