@@ -1,0 +1,76 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    if: github.repository == 'dihak/herdr'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Fetch and merge herdrdev/herdr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config merge.ours.driver true
+          git remote add upstream https://github.com/herdrdev/herdr.git 2>/dev/null \
+            || git remote set-url upstream https://github.com/herdrdev/herdr.git
+          git fetch upstream master
+          if git merge-base --is-ancestor upstream/master HEAD; then
+            echo "already up to date with upstream/master"
+            exit 0
+          fi
+
+          BRANCH=sync/upstream
+          git checkout -B "$BRANCH" origin/master
+          if git merge --no-edit upstream/master; then
+            git push -u origin "$BRANCH" --force
+            EXISTING=$(gh pr list --head "$BRANCH" --base master --state open --json number --jq '.[0].number // empty')
+            if [ -n "$EXISTING" ]; then
+              echo "updated existing PR #$EXISTING"
+            else
+              gh pr create --base master --head "$BRANCH" \
+                --title "chore: sync upstream master" \
+                --body "Daily merge of herdrdev/herdr master into this fork.
+
+          Review fork-owned files if they changed: Cargo.toml, src/update.rs, src/remote/attach.rs, distribution/install.*, README.md, agent-grid sources.
+
+          After merge: bump the fork version if needed, then tag to cut a release. herdr update does not follow git master."
+            fi
+            exit 0
+          fi
+
+          echo "merge conflicts:"
+          git diff --name-only --diff-filter=U
+          BODY=$(git diff --name-only --diff-filter=U | sed 's/^/- /')
+          git merge --abort
+          EXISTING=$(gh issue list --search "upstream sync has conflicts" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "Still conflicting after today's sync attempt:
+          $BODY"
+          else
+            gh issue create \
+              --title "chore: upstream sync has conflicts" \
+              --body "Automatic merge of herdrdev/herdr failed.
+
+          Conflicted files:
+          $BODY
+
+          Local fix: git fetch upstream && git merge upstream/master"
+          fi
+          exit 1

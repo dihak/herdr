@@ -86,6 +86,19 @@ just test        # unit tests
 just check       # formatting, tests, and maintenance checks
 ```
 
+## syncing from upstream
+
+This fork tracks [herdrdev/herdr](https://github.com/herdrdev/herdr). GitHub Actions opens a `chore: sync upstream master` PR daily. Manual:
+
+```bash
+git fetch upstream
+git merge upstream/master
+# resolve conflicts, keep fork URLs / agent-grid / latest.json
+git push origin master
+```
+
+Git sync does not ship binaries. After merge, bump `Cargo.toml` if needed, tag, and push the tag so `herdr update` picks it up.
+
 ## license
 
 Herdr is licensed under the [Apache License 2.0](LICENSE).
