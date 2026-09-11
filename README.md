@@ -88,7 +88,7 @@ just check       # formatting, tests, and maintenance checks
 
 ## syncing from upstream
 
-This fork tracks [herdrdev/herdr](https://github.com/herdrdev/herdr). GitHub Actions opens a `chore: sync upstream master` PR daily. Manual:
+This fork tracks [herdrdev/herdr](https://github.com/herdrdev/herdr). GitHub Actions opens a `chore: sync upstream master` PR weekly (Monday). Manual:
 
 ```bash
 git fetch upstream
