@@ -192,6 +192,17 @@ impl ClientShellState {
                     } else if !self.popup_pending {
                         if self.insert_overlay_text(&text) {
                             outcome.repaint = true;
+                        } else if matches!(
+                            self.overlay,
+                            Some(ClientShellOverlay::AgentGrid(ClientAgentGridOverlay {
+                                insert: true,
+                                ..
+                            }))
+                        ) {
+                            self.push_agent_grid_pane_event(
+                                ClientPaneInputEvent::TextCommit(text),
+                                &mut outcome,
+                            );
                         } else if self.overlay.is_none() && self.mode == ClientShellMode::Terminal {
                             self.push_focused_pane_event(
                                 ClientPaneInputEvent::TextCommit(text),
@@ -225,6 +236,17 @@ impl ClientShellState {
                     } else if !self.popup_pending {
                         if self.insert_overlay_text(&text) {
                             outcome.repaint = true;
+                        } else if matches!(
+                            self.overlay,
+                            Some(ClientShellOverlay::AgentGrid(ClientAgentGridOverlay {
+                                insert: true,
+                                ..
+                            }))
+                        ) {
+                            self.push_agent_grid_pane_event(
+                                ClientPaneInputEvent::Paste(text),
+                                &mut outcome,
+                            );
                         } else if self.overlay.is_none() && self.mode == ClientShellMode::Terminal {
                             self.push_focused_pane_event(
                                 ClientPaneInputEvent::Paste(text),

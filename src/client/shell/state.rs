@@ -177,6 +177,9 @@ pub(super) struct ShellHitMap {
     pub(super) navigator_popup: Rect,
     pub(super) navigator_search: Rect,
     pub(super) navigator_rows: Vec<(Rect, ClientNavigatorTarget)>,
+    pub(super) agent_grid_popup: Rect,
+    pub(super) agent_grid_cells: Vec<(Rect, AgentGridTarget)>,
+    pub(super) agent_grid_page_len: usize,
     pub(super) worktree_search: Rect,
     pub(super) worktree_rows: Vec<(Rect, usize)>,
     pub(super) help_popup: Rect,
@@ -336,6 +339,7 @@ pub(super) enum ClientShellOverlayKind {
     ConfirmClose,
     Help,
     Navigator,
+    AgentGrid,
     WorktreeCreate,
     WorktreeOpen,
     WorktreeRemove,
@@ -422,6 +426,37 @@ pub(super) struct ClientNavigatorOverlay {
     pub(super) scroll: usize,
     pub(super) filter: Option<ClientNavigatorFilter>,
     pub(super) expanded_workspaces: HashSet<(ClientEndpointId, String)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AgentGridFilter {
+    Attention,
+    All,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct AgentGridTarget {
+    pub(super) endpoint_id: ClientEndpointId,
+    pub(super) pane_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct AgentGridPreview {
+    pub(super) text: String,
+    pub(super) _revision: u64,
+}
+
+#[derive(Debug)]
+pub(super) struct ClientAgentGridOverlay {
+    pub(super) selected: Option<AgentGridTarget>,
+    pub(super) page: usize,
+    pub(super) filter: AgentGridFilter,
+    pub(super) insert: bool,
+    pub(super) previews: HashMap<String, AgentGridPreview>,
+    pub(super) preview_deadline: Option<std::time::Instant>,
+    pub(super) preview_in_flight: HashSet<String>,
+    pub(super) preview_next: usize,
+    pub(super) input_queue: VecDeque<crate::api::schema::PaneSendInputParams>,
 }
 
 #[derive(Debug)]
@@ -634,6 +669,7 @@ pub(super) enum ClientShellOverlay {
     ConfirmClose(ClientConfirmCloseOverlay),
     Help(ClientHelpOverlay),
     Navigator(ClientNavigatorOverlay),
+    AgentGrid(ClientAgentGridOverlay),
     WorktreeCreate(ClientWorktreeCreateOverlay),
     WorktreeOpen(ClientWorktreeOpenOverlay),
     WorktreeRemove(ClientWorktreeRemoveOverlay),
@@ -652,6 +688,7 @@ impl ClientShellOverlay {
             Self::ConfirmClose(_) => ClientShellOverlayKind::ConfirmClose,
             Self::Help(_) => ClientShellOverlayKind::Help,
             Self::Navigator(_) => ClientShellOverlayKind::Navigator,
+            Self::AgentGrid(_) => ClientShellOverlayKind::AgentGrid,
             Self::WorktreeCreate(_) => ClientShellOverlayKind::WorktreeCreate,
             Self::WorktreeOpen(_) => ClientShellOverlayKind::WorktreeOpen,
             Self::WorktreeRemove(_) => ClientShellOverlayKind::WorktreeRemove,
@@ -709,6 +746,10 @@ pub(super) enum PendingEndpointKind {
         origin: crate::api::schema::PaneTextPoint,
         session_generation: u64,
     },
+    AgentGridRead {
+        pane_id: String,
+    },
+    AgentGridInput,
     CopySearch {
         pane_id: String,
         origin: crate::api::schema::PaneTextPoint,
@@ -1828,9 +1869,14 @@ impl ClientShellState {
 
     pub(crate) fn timer_delay(&self, now: std::time::Instant) -> std::time::Duration {
         let default = std::time::Duration::from_millis(100);
+        let grid_deadline = match self.overlay.as_ref() {
+            Some(ClientShellOverlay::AgentGrid(grid)) => grid.preview_deadline,
+            _ => None,
+        };
         self.selection_autoscroll_deadline
             .into_iter()
             .chain(self.selection_repaint_deadline)
+            .chain(grid_deadline)
             .min()
             .map(|deadline| deadline.saturating_duration_since(now).min(default))
             .unwrap_or(default)

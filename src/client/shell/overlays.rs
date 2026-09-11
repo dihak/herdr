@@ -11,6 +11,9 @@ pub(crate) struct OverlayRender {
     pub(crate) navigator_popup: Rect,
     pub(crate) navigator_search: Rect,
     pub(crate) navigator_rows: Vec<(Rect, ClientNavigatorTarget)>,
+    pub(crate) agent_grid_popup: Rect,
+    pub(crate) agent_grid_cells: Vec<(Rect, AgentGridTarget)>,
+    pub(crate) agent_grid_page_len: usize,
     pub(crate) worktree_search: Rect,
     pub(crate) worktree_rows: Vec<(Rect, usize)>,
     pub(crate) help_popup: Rect,
@@ -37,10 +40,12 @@ pub(crate) fn render_client_overlay(
     active_endpoint_id: &ClientEndpointId,
     k: &LiveKeybindConfig,
     p: &Palette,
+    agent_panel_sort: crate::config::AgentPanelSortConfig,
 ) -> Option<OverlayRender> {
     if !matches!(
         o,
         ClientShellOverlay::Navigator(_)
+            | ClientShellOverlay::AgentGrid(_)
             | ClientShellOverlay::ContextMenu(_)
             | ClientShellOverlay::GlobalMenu(_)
     ) {
@@ -62,6 +67,9 @@ pub(crate) fn render_client_overlay(
         ClientShellOverlay::Help(v) => render_help_overlay(b, v, k, p),
         ClientShellOverlay::Navigator(v) => {
             render_navigator_overlay(b, v, endpoints, active_endpoint_id, p)
+        }
+        ClientShellOverlay::AgentGrid(v) => {
+            render_agent_grid_overlay(b, v, endpoints, active_endpoint_id, agent_panel_sort, p)
         }
         ClientShellOverlay::Settings(v) => {
             settings_overlay::render_settings_overlay(b, v, s.integration_updates_available, p)
@@ -926,6 +934,122 @@ fn render_navigator_overlay(
             visible: true,
             shape: 0,
         }),
+        ..OverlayRender::default()
+    })
+}
+
+fn render_agent_grid_overlay(
+    b: &mut Buffer,
+    overlay: &ClientAgentGridOverlay,
+    endpoints: &[ClientShellEndpoint],
+    active_endpoint_id: &ClientEndpointId,
+    sort: crate::config::AgentPanelSortConfig,
+    p: &Palette,
+) -> Option<OverlayRender> {
+    let a = b.area;
+    let mx = (a.width / 16).max(1);
+    let my = (a.height / 12).max(1);
+    let q = Rect::new(
+        a.x + mx,
+        a.y + my,
+        a.width.saturating_sub(mx * 2).max(4),
+        a.height.saturating_sub(my * 2).max(4),
+    );
+    let i = panel(b, q, p.accent, p.panel_bg)?;
+    let tiles =
+        super::agent_grid::agent_grid_tiles(endpoints, active_endpoint_id, sort, overlay.filter);
+    put_text(
+        b,
+        i.x,
+        i.y,
+        i.width,
+        &format!(" agents · {}", overlay.filter.label()),
+        Style::default().fg(p.text).bg(p.panel_bg),
+    );
+    put_right_text(
+        b,
+        i,
+        i.y,
+        &format!("{} agents", tiles.len()),
+        Style::default().fg(p.overlay0).bg(p.panel_bg),
+    );
+    put_text(
+        b,
+        i.x,
+        i.y + 1,
+        i.width,
+        &"─".repeat(i.width as usize),
+        Style::default().fg(p.surface1).bg(p.panel_bg),
+    );
+    let body = Rect::new(
+        i.x,
+        i.y.saturating_add(2),
+        i.width,
+        i.height.saturating_sub(4),
+    );
+    let (cols, rows, page_len) = super::agent_grid::grid_geometry(tiles.len(), body);
+    let page = super::agent_grid::clamp_page(overlay.page, tiles.len(), page_len);
+    let visible = super::agent_grid::visible_page(&tiles, page, page_len);
+    let selected = super::agent_grid::selected_index(&tiles, overlay.selected.as_ref());
+    let mut hits = Vec::new();
+    if tiles.is_empty() {
+        put_text(
+            b,
+            body.x,
+            body.y,
+            body.width,
+            " no matching agents",
+            Style::default().fg(p.overlay0).bg(p.panel_bg),
+        );
+    } else if cols > 0 && rows > 0 {
+        for (index, tile) in visible.iter().enumerate() {
+            let rect = super::agent_grid::cell_rect(body, cols, rows, index);
+            if rect.width < 4 || rect.height < 3 {
+                continue;
+            }
+            hits.push((rect, tile.target.clone()));
+            let global_index = page.saturating_mul(page_len) + index;
+            let selected_cell = global_index == selected;
+            let border = if tile.stale {
+                p.overlay0
+            } else if selected_cell {
+                p.accent
+            } else {
+                p.surface1
+            };
+            let Some(inner) = panel(b, rect, border, p.panel_bg) else {
+                continue;
+            };
+            let default = Style::default().fg(p.text).bg(p.panel_bg);
+            if let Some(preview) = overlay.previews.get(&tile.target.pane_id) {
+                super::ansi_paint::paint_ansi(b, inner, &preview.text, default);
+            }
+        }
+    }
+    let pages = super::agent_grid::page_count(tiles.len(), page_len);
+    let footer = if overlay.insert {
+        " typing in selected agent · esc stop".to_owned()
+    } else if pages > 1 {
+        format!(
+            " page {}/{} · move h/j/k/l · a all · w working · i type · enter open · esc close",
+            page + 1,
+            pages
+        )
+    } else {
+        " move h/j/k/l · a all · w working · i type · enter open · esc close".to_owned()
+    };
+    put_text(
+        b,
+        i.x,
+        i.bottom().saturating_sub(1),
+        i.width,
+        &footer,
+        Style::default().fg(p.overlay0).bg(p.panel_bg),
+    );
+    Some(OverlayRender {
+        agent_grid_popup: q,
+        agent_grid_cells: hits,
+        agent_grid_page_len: page_len,
         ..OverlayRender::default()
     })
 }

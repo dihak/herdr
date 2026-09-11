@@ -1620,6 +1620,46 @@ impl ClientShellState {
             }
             return;
         }
+        if matches!(self.overlay, Some(ClientShellOverlay::AgentGrid(_))) {
+            let cell_hit = self
+                .hits
+                .agent_grid_cells
+                .iter()
+                .find(|(rect, _)| super::contains(*rect, point))
+                .cloned();
+            match mouse.kind {
+                MouseEventKind::Moved => {
+                    if let Some((_, target)) = cell_hit {
+                        if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+                            grid.selected = Some(target);
+                        }
+                        outcome.repaint = true;
+                    }
+                }
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some((_, target)) = cell_hit {
+                        if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+                            grid.selected = Some(target);
+                            grid.insert = false;
+                        }
+                        self.accept_agent_grid_selection(outcome);
+                    } else if !super::contains(self.hits.agent_grid_popup, point) {
+                        self.overlay = None;
+                        outcome.repaint = true;
+                    }
+                }
+                MouseEventKind::ScrollUp => {
+                    self.page_agent_grid(-1);
+                    outcome.repaint = true;
+                }
+                MouseEventKind::ScrollDown => {
+                    self.page_agent_grid(1);
+                    outcome.repaint = true;
+                }
+                _ => {}
+            }
+            return;
+        }
         if self.overlay.is_some() {
             if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
                 return;
