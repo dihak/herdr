@@ -300,7 +300,10 @@ impl ClientShellState {
         );
     }
 
-    pub(super) fn continue_agent_grid_lane(&mut self, repaint: bool) -> (bool, Vec<ClientShellAction>) {
+    pub(super) fn continue_agent_grid_lane(
+        &mut self,
+        repaint: bool,
+    ) -> (bool, Vec<ClientShellAction>) {
         let mut outcome = ClientShellInput::default();
         self.drain_agent_grid_queue(&mut outcome);
         if outcome.actions.is_empty() {

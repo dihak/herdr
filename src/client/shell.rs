@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 mod actions;
 mod agent_grid;
-mod ansi_paint;
 mod agent_sidebar;
 mod aggregate_navigation;
+mod ansi_paint;
 mod workspace_navigation;
 use workspace_navigation::WorkspaceNavigationTarget;
 mod composition;
