@@ -61,12 +61,10 @@ pub(super) fn grid_geometry(count: usize, area: Rect) -> (u16, u16, usize) {
     let max_rows = ((area.height + CELL_GAP) / (CARD_HEIGHT + CELL_GAP)).max(1);
     let page_cap = (max_cols as usize)
         .saturating_mul(max_rows as usize)
-        .min(AGENT_GRID_PAGE_CAP)
-        .max(1);
+        .clamp(1, AGENT_GRID_PAGE_CAP);
     let visible = count.min(page_cap);
-    let cols = (visible as u16).min(max_cols).max(1);
-    let rows = visible.div_ceil(cols as usize) as u16;
-    let rows = rows.min(max_rows).max(1);
+    let cols = (visible as u16).clamp(1, max_cols);
+    let rows = (visible.div_ceil(cols as usize) as u16).clamp(1, max_rows);
     let page_len = (cols as usize).saturating_mul(rows as usize).min(page_cap);
     (cols, rows, page_len.max(1))
 }
@@ -94,11 +92,11 @@ pub(super) fn clamp_page(page: usize, total: usize, page_len: usize) -> usize {
     }
 }
 
-pub(super) fn visible_page<'a>(
-    tiles: &'a [AgentGridTile],
+pub(super) fn visible_page(
+    tiles: &[AgentGridTile],
     page: usize,
     page_len: usize,
-) -> &'a [AgentGridTile] {
+) -> &[AgentGridTile] {
     if page_len == 0 || tiles.is_empty() {
         return &[];
     }

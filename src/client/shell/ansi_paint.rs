@@ -28,7 +28,7 @@ pub(super) fn paint_ansi(buffer: &mut Buffer, area: Rect, ansi: &str, default: S
             if x.saturating_add(width) > area.right() {
                 break;
             }
-            buffer.set_stringn(x, y, &ch.to_string(), width as usize, *style);
+            buffer.set_stringn(x, y, ch.to_string(), width as usize, *style);
             x = x.saturating_add(width);
         }
     }
@@ -46,7 +46,7 @@ fn parse_ansi_rows(ansi: &str, default: Style) -> Vec<Vec<(char, Style)>> {
                 Some('[') => {
                     chars.next();
                     let mut seq = String::new();
-                    while let Some(next) = chars.next() {
+                    for next in chars.by_ref() {
                         seq.push(next);
                         if next.is_ascii_alphabetic() {
                             break;
