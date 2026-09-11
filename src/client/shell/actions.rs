@@ -48,6 +48,12 @@ impl ClientShellState {
                     outcome.repaint = true;
                     return;
                 }
+                if action == crate::input::KeybindAction::OpenAgentGrid {
+                    self.open_agent_grid_overlay();
+                    self.refresh_agent_grid_previews(outcome);
+                    outcome.repaint = true;
+                    return;
+                }
                 if action == crate::input::KeybindAction::Help {
                     self.overlay = Some(ClientShellOverlay::Help(ClientHelpOverlay {
                         query: String::new(),
@@ -869,6 +875,32 @@ impl ClientShellState {
                 };
                 self.complete_copy_operation(session_generation, continue_queue, &mut outcome);
                 return (repaint || outcome.repaint, outcome.actions);
+            }
+            PendingEndpointKind::AgentGridRead { pane_id } => {
+                let mut repaint = false;
+                if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+                    grid.preview_in_flight.remove(&pane_id);
+                    grid.preview_deadline = Some(std::time::Instant::now());
+                    if let Ok(crate::api::schema::ResponseResult::PaneRead { read }) = result {
+                        if read.pane_id == pane_id {
+                            grid.previews.insert(
+                                pane_id,
+                                AgentGridPreview {
+                                    text: read.text,
+                                    _revision: read.revision,
+                                },
+                            );
+                            repaint = true;
+                        }
+                    }
+                }
+                return self.continue_agent_grid_lane(repaint);
+            }
+            PendingEndpointKind::AgentGridInput => {
+                if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+                    grid.preview_deadline = Some(std::time::Instant::now());
+                }
+                return self.continue_agent_grid_lane(false);
             }
             PendingEndpointKind::ReloadConfig => {
                 let repaint = match result {

@@ -216,6 +216,291 @@ impl ClientShellState {
         self.overlay = Some(ClientShellOverlay::Navigator(navigator));
     }
 
+    pub(super) fn open_agent_grid_overlay(&mut self) {
+        let tiles = super::agent_grid::agent_grid_tiles(
+            &self.endpoints,
+            &self.active_endpoint_id,
+            self.config.agent_panel_sort,
+            AgentGridFilter::All,
+        );
+        let selected = tiles
+            .iter()
+            .find(|tile| tile.current)
+            .or_else(|| tiles.first())
+            .map(|tile| tile.target.clone());
+        self.overlay = Some(ClientShellOverlay::AgentGrid(ClientAgentGridOverlay {
+            selected,
+            page: 0,
+            filter: AgentGridFilter::All,
+            insert: false,
+            previews: HashMap::new(),
+            preview_deadline: Some(std::time::Instant::now()),
+            preview_in_flight: HashSet::new(),
+            preview_next: 0,
+            input_queue: VecDeque::new(),
+        }));
+    }
+
+    fn agent_grid_selected_pane(&self) -> Option<String> {
+        let ClientShellOverlay::AgentGrid(grid) = self.overlay.as_ref()? else {
+            return None;
+        };
+        grid.selected
+            .as_ref()
+            .filter(|target| target.endpoint_id == self.active_endpoint_id)
+            .map(|target| target.pane_id.clone())
+    }
+
+    fn agent_grid_lane_busy(&self) -> bool {
+        !self.pending_requests.is_empty()
+    }
+
+    pub(super) fn push_agent_grid_pane_event(
+        &mut self,
+        event: crate::protocol::ClientPaneInputEvent,
+        outcome: &mut ClientShellInput,
+    ) -> bool {
+        let Some(pane_id) = self.agent_grid_selected_pane() else {
+            return false;
+        };
+        let Some(params) = agent_grid_send_input(pane_id, &event) else {
+            return false;
+        };
+        let probe = crate::api::schema::Method::PaneSendInput(params.clone());
+        if !self.supports_endpoint_method(&probe) {
+            super::push_target_event(ClientInputTarget::Pane(params.pane_id), event, outcome);
+            return true;
+        }
+        if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+            grid.input_queue.push_back(params);
+        }
+        self.drain_agent_grid_queue(outcome);
+        true
+    }
+
+    fn drain_agent_grid_queue(&mut self, outcome: &mut ClientShellInput) {
+        if self.agent_grid_lane_busy() {
+            return;
+        }
+        let Some(params) = self.overlay.as_mut().and_then(|overlay| match overlay {
+            ClientShellOverlay::AgentGrid(grid) => grid.input_queue.pop_front(),
+            _ => None,
+        }) else {
+            return;
+        };
+        self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::PaneSendInput(params),
+            PendingEndpointKind::AgentGridInput,
+            outcome,
+        );
+    }
+
+    pub(super) fn continue_agent_grid_lane(&mut self, repaint: bool) -> (bool, Vec<ClientShellAction>) {
+        let mut outcome = ClientShellInput::default();
+        self.drain_agent_grid_queue(&mut outcome);
+        if outcome.actions.is_empty() {
+            self.refresh_agent_grid_previews(&mut outcome);
+        }
+        (repaint || outcome.repaint, outcome.actions)
+    }
+
+    pub(crate) fn tick_agent_grid(
+        &mut self,
+        now: std::time::Instant,
+        outcome: &mut ClientShellInput,
+    ) {
+        let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_ref() else {
+            return;
+        };
+        if grid.preview_deadline.is_some_and(|deadline| now < deadline) {
+            return;
+        }
+        self.refresh_agent_grid_previews(outcome);
+    }
+
+    pub(super) fn refresh_agent_grid_previews(&mut self, outcome: &mut ClientShellInput) {
+        let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_ref() else {
+            return;
+        };
+        if !self.endpoint_is_online(&self.active_endpoint_id) {
+            return;
+        }
+        let probe = crate::api::schema::Method::PaneRead(crate::api::schema::PaneReadParams {
+            pane_id: String::new(),
+            source: crate::api::schema::ReadSource::Visible,
+            lines: None,
+            format: crate::api::schema::ReadFormat::Ansi,
+            strip_ansi: false,
+            intent: crate::api::schema::ReadIntent::Passive,
+        });
+        if !self.supports_endpoint_method(&probe) {
+            return;
+        }
+        let page_len = self.agent_grid_page_len();
+        let tiles = super::agent_grid::agent_grid_tiles(
+            &self.endpoints,
+            &self.active_endpoint_id,
+            self.config.agent_panel_sort,
+            grid.filter,
+        );
+        if self.agent_grid_lane_busy() {
+            return;
+        }
+        let visible = super::agent_grid::visible_page(&tiles, grid.page, page_len);
+        let pane_ids = visible
+            .iter()
+            .filter(|tile| tile.target.endpoint_id == self.active_endpoint_id && !tile.stale)
+            .map(|tile| tile.target.pane_id.clone())
+            .collect::<Vec<_>>();
+        let mut to_fetch = None;
+        if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+            grid.preview_deadline =
+                Some(std::time::Instant::now() + std::time::Duration::from_millis(40));
+            grid.previews
+                .retain(|pane_id, _| pane_ids.iter().any(|id| id == pane_id));
+            if grid.preview_in_flight.is_empty() && !pane_ids.is_empty() {
+                let missing = pane_ids
+                    .iter()
+                    .position(|pane_id| !grid.previews.contains_key(pane_id));
+                let index = missing.unwrap_or(grid.preview_next % pane_ids.len());
+                grid.preview_next = index.saturating_add(1);
+                to_fetch = Some(pane_ids[index].clone());
+            }
+        }
+        let Some(pane_id) = to_fetch else {
+            return;
+        };
+        if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+            grid.preview_in_flight.insert(pane_id.clone());
+        }
+        self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::PaneRead(crate::api::schema::PaneReadParams {
+                pane_id: pane_id.clone(),
+                source: crate::api::schema::ReadSource::Visible,
+                lines: None,
+                format: crate::api::schema::ReadFormat::Ansi,
+                strip_ansi: false,
+                intent: crate::api::schema::ReadIntent::Passive,
+            }),
+            PendingEndpointKind::AgentGridRead { pane_id },
+            outcome,
+        );
+    }
+
+    fn agent_grid_tiles(&self, filter: AgentGridFilter) -> Vec<super::agent_grid::AgentGridTile> {
+        super::agent_grid::agent_grid_tiles(
+            &self.endpoints,
+            &self.active_endpoint_id,
+            self.config.agent_panel_sort,
+            filter,
+        )
+    }
+
+    fn agent_grid_page_len(&self) -> usize {
+        let page_len = self.hits.agent_grid_page_len;
+        if page_len == 0 {
+            super::agent_grid::AGENT_GRID_PAGE_CAP
+        } else {
+            page_len.min(super::agent_grid::AGENT_GRID_PAGE_CAP)
+        }
+    }
+
+    fn agent_grid_columns(&self) -> usize {
+        let Some(first_y) = self.hits.agent_grid_cells.first().map(|(rect, _)| rect.y) else {
+            return 1;
+        };
+        self.hits
+            .agent_grid_cells
+            .iter()
+            .take_while(|(rect, _)| rect.y == first_y)
+            .count()
+            .max(1)
+    }
+
+    pub(super) fn move_agent_grid_selection(&mut self, dx: isize, dy: isize) {
+        let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_ref() else {
+            return;
+        };
+        let filter = grid.filter;
+        let tiles = self.agent_grid_tiles(filter);
+        if tiles.is_empty() {
+            if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+                grid.selected = None;
+            }
+            return;
+        }
+        let page_len = self.agent_grid_page_len();
+        let cols = self.agent_grid_columns();
+        let selected = super::agent_grid::selected_index(&tiles, grid.selected.as_ref());
+        let next = if dy == 0 {
+            (selected as isize + dx).clamp(0, tiles.len().saturating_sub(1) as isize) as usize
+        } else {
+            (selected as isize + dy * cols as isize)
+                .clamp(0, tiles.len().saturating_sub(1) as isize) as usize
+        };
+        if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+            grid.selected = Some(tiles[next].target.clone());
+            grid.page = next / page_len;
+        }
+    }
+
+    pub(super) fn page_agent_grid(&mut self, delta: isize) {
+        let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_ref() else {
+            return;
+        };
+        let tiles = self.agent_grid_tiles(grid.filter);
+        let page_len = self.agent_grid_page_len();
+        let pages = super::agent_grid::page_count(tiles.len(), page_len);
+        if pages == 0 {
+            return;
+        }
+        if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+            let next =
+                (grid.page as isize + delta).clamp(0, pages.saturating_sub(1) as isize) as usize;
+            grid.page = next;
+            let start = next.saturating_mul(page_len);
+            grid.selected = tiles.get(start).map(|tile| tile.target.clone());
+        }
+    }
+
+    pub(super) fn set_agent_grid_filter(&mut self, filter: AgentGridFilter) {
+        let tiles = self.agent_grid_tiles(filter);
+        let selected = tiles.first().map(|tile| tile.target.clone());
+        if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+            grid.filter = filter;
+            grid.page = 0;
+            grid.selected = selected;
+        }
+    }
+
+    pub(super) fn accept_agent_grid_selection(&mut self, outcome: &mut ClientShellInput) {
+        let target = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::AgentGrid(grid) => {
+                let tiles = super::agent_grid::agent_grid_tiles(
+                    &self.endpoints,
+                    &self.active_endpoint_id,
+                    self.config.agent_panel_sort,
+                    grid.filter,
+                );
+                let index = super::agent_grid::selected_index(&tiles, grid.selected.as_ref());
+                tiles.get(index).map(|tile| tile.target.clone())
+            }
+            _ => None,
+        });
+        let Some(target) = target else {
+            return;
+        };
+        let activated = self.focus_or_activate(
+            target.endpoint_id,
+            ClientEndpointFocusTarget::Pane(target.pane_id),
+            outcome,
+        );
+        if activated {
+            self.overlay = None;
+        }
+        outcome.repaint = true;
+    }
+
     pub(super) fn move_navigator_selection(&mut self, delta: isize) {
         let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut() else {
             return;
@@ -468,6 +753,7 @@ impl ClientShellState {
                 navigator.selected = None;
                 true
             }
+            Some(ClientShellOverlay::AgentGrid(grid)) if grid.insert => false,
             _ => false,
         }
     }
@@ -781,6 +1067,98 @@ impl ClientShellState {
             }
             if code == KeyCode::Char(' ') && modifiers.is_empty() {
                 self.toggle_selected_navigator_workspace();
+                outcome.repaint = true;
+                return;
+            }
+            return;
+        }
+
+        if matches!(self.overlay, Some(ClientShellOverlay::AgentGrid(_))) {
+            let insert = matches!(
+                self.overlay,
+                Some(ClientShellOverlay::AgentGrid(ClientAgentGridOverlay {
+                    insert: true,
+                    ..
+                }))
+            );
+            let (code, modifiers) = crate::config::normalize_key_combo((key.code, key.modifiers));
+            if insert {
+                if code == KeyCode::Esc {
+                    if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+                        grid.insert = false;
+                    }
+                    outcome.repaint = true;
+                    return;
+                }
+                if let Some(event) =
+                    crate::protocol::ClientPaneInputEvent::from_terminal_key(key.clone())
+                {
+                    self.push_agent_grid_pane_event(event, outcome);
+                    if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+                        grid.preview_deadline = Some(std::time::Instant::now());
+                    }
+                    self.refresh_agent_grid_previews(outcome);
+                    outcome.repaint = true;
+                }
+                return;
+            }
+            if code == KeyCode::Esc {
+                self.overlay = None;
+                outcome.repaint = true;
+                return;
+            }
+            if code == KeyCode::Enter {
+                self.accept_agent_grid_selection(outcome);
+                return;
+            }
+            if code == KeyCode::Char('i') && modifiers.is_empty() {
+                if let Some(ClientShellOverlay::AgentGrid(grid)) = self.overlay.as_mut() {
+                    grid.insert = true;
+                }
+                outcome.repaint = true;
+                return;
+            }
+            if matches!(code, KeyCode::Left | KeyCode::Char('h')) && modifiers.is_empty() {
+                self.move_agent_grid_selection(-1, 0);
+                outcome.repaint = true;
+                return;
+            }
+            if matches!(code, KeyCode::Right | KeyCode::Char('l')) && modifiers.is_empty() {
+                self.move_agent_grid_selection(1, 0);
+                outcome.repaint = true;
+                return;
+            }
+            if matches!(code, KeyCode::Down | KeyCode::Char('j')) && modifiers.is_empty() {
+                self.move_agent_grid_selection(0, 1);
+                outcome.repaint = true;
+                return;
+            }
+            if matches!(code, KeyCode::Up | KeyCode::Char('k')) && modifiers.is_empty() {
+                self.move_agent_grid_selection(0, -1);
+                outcome.repaint = true;
+                return;
+            }
+            if matches!(code, KeyCode::Char('n') | KeyCode::PageDown) && modifiers.is_empty() {
+                self.page_agent_grid(1);
+                self.refresh_agent_grid_previews(outcome);
+                outcome.repaint = true;
+                return;
+            }
+            if matches!(code, KeyCode::Char('p') | KeyCode::PageUp) && modifiers.is_empty() {
+                self.page_agent_grid(-1);
+                self.refresh_agent_grid_previews(outcome);
+                outcome.repaint = true;
+                return;
+            }
+            if code == KeyCode::Char('w') && modifiers.is_empty() {
+                self.set_agent_grid_filter(AgentGridFilter::Attention);
+                self.refresh_agent_grid_previews(outcome);
+                outcome.repaint = true;
+                return;
+            }
+            if code == KeyCode::Char('a') && modifiers.is_empty() {
+                self.set_agent_grid_filter(AgentGridFilter::All);
+                self.refresh_agent_grid_previews(outcome);
                 outcome.repaint = true;
                 return;
             }
@@ -1115,5 +1493,40 @@ impl ClientShellState {
                 detail: format!("{} — {scope}", workspace.label),
             },
         ));
+    }
+}
+
+fn agent_grid_send_input(
+    pane_id: String,
+    event: &crate::protocol::ClientPaneInputEvent,
+) -> Option<crate::api::schema::PaneSendInputParams> {
+    use crate::protocol::{ClientKeyKind, ClientPaneInputEvent};
+
+    match event {
+        ClientPaneInputEvent::Key {
+            kind: ClientKeyKind::Release,
+            ..
+        } => None,
+        ClientPaneInputEvent::Key {
+            code, modifiers, ..
+        } => {
+            let combo = crate::config::format_key_combo((
+                code.to_crossterm(),
+                crossterm::event::KeyModifiers::from_bits_truncate(*modifiers),
+            ));
+            Some(crate::api::schema::PaneSendInputParams {
+                pane_id,
+                text: String::new(),
+                keys: vec![combo],
+            })
+        }
+        ClientPaneInputEvent::TextCommit(text) | ClientPaneInputEvent::Paste(text) => {
+            Some(crate::api::schema::PaneSendInputParams {
+                pane_id,
+                text: text.clone(),
+                keys: Vec::new(),
+            })
+        }
+        ClientPaneInputEvent::Mouse { .. } => None,
     }
 }

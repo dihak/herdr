@@ -614,6 +614,7 @@ impl ClientShellState {
                     &self.active_endpoint_id,
                     &self.config.keybinds,
                     &self.config.palette,
+                    self.config.agent_panel_sort,
                 )?;
                 self.hits.overlay_primary = rendered.primary;
                 self.hits.overlay_clear = rendered.clear;
@@ -621,6 +622,9 @@ impl ClientShellState {
                 self.hits.navigator_popup = rendered.navigator_popup;
                 self.hits.navigator_search = rendered.navigator_search;
                 self.hits.navigator_rows = rendered.navigator_rows;
+                self.hits.agent_grid_popup = rendered.agent_grid_popup;
+                self.hits.agent_grid_cells = rendered.agent_grid_cells;
+                self.hits.agent_grid_page_len = rendered.agent_grid_page_len;
                 self.hits.worktree_search = rendered.worktree_search;
                 self.hits.worktree_rows = rendered.worktree_rows;
                 self.hits.help_popup = rendered.help_popup;
