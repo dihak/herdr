@@ -1,21 +1,21 @@
 {
-  "version": "0.9.1",
+  "version": "0.9.2",
   "protocol": 22,
   "endpoint_generation": 1,
   "notes": "### Added\n- Agent grid overlay (`prefix+a`) with live pane previews and typing into selected agents, including other workspaces.\n",
   "assets": {
-    "linux-x86_64": "https://github.com/dihak/herdr/releases/download/v0.9.1/herdr-linux-x86_64",
-    "linux-aarch64": "https://github.com/dihak/herdr/releases/download/v0.9.1/herdr-linux-aarch64",
-    "macos-x86_64": "https://github.com/dihak/herdr/releases/download/v0.9.1/herdr-macos-x86_64",
-    "macos-aarch64": "https://github.com/dihak/herdr/releases/download/v0.9.1/herdr-macos-aarch64",
-    "windows-x86_64": "https://github.com/dihak/herdr/releases/download/v0.9.1/herdr-windows-x86_64.zip"
+    "linux-x86_64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-linux-x86_64",
+    "linux-aarch64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-linux-aarch64",
+    "macos-x86_64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-macos-x86_64",
+    "macos-aarch64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-macos-aarch64",
+    "windows-x86_64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-windows-x86_64.zip"
   },
   "sha256": {
-    "linux-x86_64": "12c4f896a7b5e53ef8648ad87064d31f2b542d7ef929554837005de57503ed6d",
-    "linux-aarch64": "6a8f9aa326f6f6377398c36d50f1273abb9c74f812296aee8a10330cfcd6f819",
-    "macos-x86_64": "4f6d7d378533b4523fc42acd5509307ef427a9bbe6ef549fd3daba7dc57fe78b",
-    "macos-aarch64": "5f8b29963c892e799efb9295e4f6e862c8dbd0db94d182a3ed8598b83cad9f87",
-    "windows-x86_64": "13a8623863840941d1de8d6ac4c5833153c1fd24d1b052cde53b5eac409612f9"
+    "linux-x86_64": "0a96f5a0d222225421c55c4eab573c4fc828fafaf1da5f7ebfaa374710519544",
+    "linux-aarch64": "b31e2ebe4c88cc8f1de68337709aac756b531f52f70835dfcd811f5981522776",
+    "macos-x86_64": "23fe81c11f0fedfb87c0fafb6624823d2976138269e8997995de71164c2fec26",
+    "macos-aarch64": "1b4594849f00d9d9c57fabf464ad39821464025353836f36c5f91bf2ced219fd",
+    "windows-x86_64": "68ab9b34444eee61050f2c8f32fc8083ec221fd9c71f80fcf0bff012970aa4ce"
   },
   "releases": {
     "0.9.0": {
@@ -589,6 +589,25 @@
         "macos-x86_64": "4f6d7d378533b4523fc42acd5509307ef427a9bbe6ef549fd3daba7dc57fe78b",
         "macos-aarch64": "5f8b29963c892e799efb9295e4f6e862c8dbd0db94d182a3ed8598b83cad9f87",
         "windows-x86_64": "13a8623863840941d1de8d6ac4c5833153c1fd24d1b052cde53b5eac409612f9"
+      }
+    },
+    "0.9.2": {
+      "notes": "### Added\n- Agent grid overlay (`prefix+a`) with live pane previews and typing into selected agents, including other workspaces.\n",
+      "protocol": 22,
+      "endpoint_generation": 1,
+      "assets": {
+        "linux-x86_64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-linux-x86_64",
+        "linux-aarch64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-linux-aarch64",
+        "macos-x86_64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-macos-x86_64",
+        "macos-aarch64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-macos-aarch64",
+        "windows-x86_64": "https://github.com/dihak/herdr/releases/download/v0.9.2/herdr-windows-x86_64.zip"
+      },
+      "sha256": {
+        "linux-x86_64": "0a96f5a0d222225421c55c4eab573c4fc828fafaf1da5f7ebfaa374710519544",
+        "linux-aarch64": "b31e2ebe4c88cc8f1de68337709aac756b531f52f70835dfcd811f5981522776",
+        "macos-x86_64": "23fe81c11f0fedfb87c0fafb6624823d2976138269e8997995de71164c2fec26",
+        "macos-aarch64": "1b4594849f00d9d9c57fabf464ad39821464025353836f36c5f91bf2ced219fd",
+        "windows-x86_64": "68ab9b34444eee61050f2c8f32fc8083ec221fd9c71f80fcf0bff012970aa4ce"
       }
     }
   }
