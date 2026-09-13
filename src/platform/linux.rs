@@ -468,13 +468,44 @@ pub fn read_clipboard_text() -> Option<String> {
 }
 
 pub fn open_url(url: &str) -> std::io::Result<Option<std::process::Child>> {
-    Command::new("xdg-open")
-        .arg(url)
+    let invocation = open_url_invocation(url, running_inside_wsl());
+    Command::new(invocation.program)
+        .args(&invocation.args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .map(Some)
+}
+
+struct OpenUrlInvocation {
+    program: &'static str,
+    args: Vec<String>,
+}
+
+fn powershell_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn open_url_invocation(url: &str, inside_wsl: bool) -> OpenUrlInvocation {
+    if inside_wsl {
+        // WSL interop turns cmd `start "" ...` empty-title args into `\`.
+        // Start-Process uses the Windows URL handler (default browser).
+        OpenUrlInvocation {
+            program: "powershell.exe",
+            args: vec![
+                "-NoProfile".to_string(),
+                "-NonInteractive".to_string(),
+                "-Command".to_string(),
+                format!("Start-Process {}", powershell_single_quoted(url)),
+            ],
+        }
+    } else {
+        OpenUrlInvocation {
+            program: "xdg-open",
+            args: vec![url.to_string()],
+        }
+    }
 }
 
 pub fn read_clipboard_image() -> Option<ClipboardImage> {
@@ -847,6 +878,36 @@ mod tests {
         assert!(text_indicates_wsl("4.4.0-19041-Microsoft"));
         assert!(!text_indicates_wsl("6.8.0-64-generic"));
         assert!(!text_indicates_wsl(""));
+    }
+
+    #[test]
+    fn open_url_on_linux_uses_xdg_open() {
+        let invocation = open_url_invocation("https://example.com", false);
+        assert_eq!(invocation.program, "xdg-open");
+        assert_eq!(invocation.args, ["https://example.com"]);
+    }
+
+    #[test]
+    fn open_url_on_wsl_uses_powershell_start_process() {
+        let invocation = open_url_invocation("https://example.com/path?q=a&b=1", true);
+        assert_eq!(invocation.program, "powershell.exe");
+        assert_eq!(
+            invocation.args,
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Process 'https://example.com/path?q=a&b=1'",
+            ]
+        );
+    }
+
+    #[test]
+    fn powershell_single_quoted_escapes_embedded_quotes() {
+        assert_eq!(
+            powershell_single_quoted("https://example.com/a'b"),
+            "'https://example.com/a''b'"
+        );
     }
 
     #[test]
