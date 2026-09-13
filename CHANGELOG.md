@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.9.2] - 2026-09-13
+
 ### Fixed
 - On WSL, Ctrl-clicking a URL now opens the Windows default browser instead of a Linux browser via `xdg-open`.
 
